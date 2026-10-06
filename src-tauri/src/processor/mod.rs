@@ -15,6 +15,10 @@ pub struct Job {
     pub error: Option<String>,
     pub created_at: u64,
     pub completed_at: Option<u64>,
+    /// 0.4.6: the ToolConfig key the job ran with ("widget:<id>" or a folder key) so Retry
+    /// reruns with that holder's CURRENT options instead of the tool card's.
+    #[serde(default)]
+    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -42,7 +46,13 @@ impl Job {
             error: None,
             created_at: now(),
             completed_at: None,
+            key: None,
         }
+    }
+
+    pub fn with_key(mut self, key: &str) -> Self {
+        self.key = Some(key.to_string());
+        self
     }
 
     pub fn set_processing(&mut self) {

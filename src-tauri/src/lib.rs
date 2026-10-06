@@ -100,7 +100,7 @@ fn spawn_event_loop(app: AppHandle, state_auth: Arc<RwLock<auth::AuthState>>, st
             let label = tool_label(&event.tool_config, &lang);
             add_log(&format!("{} → {}", file_name, label));
 
-            let job_id = job_add(processor::Job::new(&event.tool_id, &label, &event.path.to_string_lossy()));
+            let job_id = job_add(processor::Job::new(&event.tool_id, &label, &event.path.to_string_lossy()).with_key(&event.tool_config.key));
             job_update(&job_id, |j| j.set_processing());
 
             let token = state_auth.read().await.token.clone();
@@ -304,9 +304,19 @@ async fn retry_job(app: AppHandle, state: tauri::State<'_, AppState>, job_id: St
         return Err(if state.config.read().await.general.language == "en" { "The original file is no longer there".into() } else { "Originalfilen findes ikke længere".into() });
     }
     let parent = input.parent().map(|p| p.to_path_buf());
-    let entry = {
-        let config = state.config.read().await;
-        config.tools.iter().find(|t| t.id == job.tool_id && t.enabled && t.folder_path.as_deref().map(Path::new) == parent.as_deref()).cloned()
+    // 0.4.6: rerun with the CURRENT options of whatever ran the job — its widget, its folder
+    // entry — not a stale copy. Falls back to the folder-by-path lookup and the tool card.
+    let widget_tc = match job.key.as_deref().and_then(|k| k.strip_prefix("widget:")) {
+        Some(id) => widgets::widget_tool_config(&state, id).await,
+        None => None,
+    };
+    let entry = match widget_tc {
+        Some(tc) => Some(tc),
+        None => {
+            let config = state.config.read().await;
+            job.key.as_deref().and_then(|k| config.tools.iter().find(|t| t.key == k && t.enabled).cloned())
+                .or_else(|| config.tools.iter().find(|t| t.id == job.tool_id && t.enabled && t.folder_path.as_deref().map(Path::new) == parent.as_deref()).cloned())
+        }
     };
     let token = state.auth.read().await.token.clone();
     job_update(&job_id, |j| { j.status = processor::JobStatus::Processing; j.error = None; j.output_file = None; });
@@ -492,7 +502,23 @@ async fn update_tool_options(app: AppHandle, state: tauri::State<'_, AppState>, 
         None => config.tools.iter_mut().find(|t| t.id == tool_id),
     };
     if let Some(tc) = found {
-        tc.options = options;
+        // 0.4.6: widgets of this tool that still carry the card's previous options (never
+        // customised on their own) follow the card. A widget edited separately keeps its own.
+        let previous = tc.options.clone();
+        tc.options = options.clone();
+        if key.is_none() {
+            let mut changed = Vec::new();
+            for w in config.widgets.iter_mut().filter(|w| w.tool_id == tool_id) {
+                let own = w.options.as_object().map(|o| o.is_empty()).unwrap_or(true);
+                if own || w.options == previous {
+                    w.options = options.clone();
+                    changed.push(w.id.clone());
+                }
+            }
+            for id in changed {
+                let _ = app.emit_to(widgets::label(&id), "widget-changed", ());
+            }
+        }
     } else if key.is_some() {
         return Err("Unknown folder entry".to_string());
     } else {
@@ -500,9 +526,20 @@ async fn update_tool_options(app: AppHandle, state: tauri::State<'_, AppState>, 
         let Some(def) = def else { return Err(format!("Unknown tool: {}", tool_id)) };
         config.tools.push(ToolConfig {
             id: def.id.clone(), key: def.id.clone(), enabled: false, folder_path: None, output_mode: config::OutputMode::Subfolder,
-            options, endpoint: Some(def.endpoint.clone()), file_field: Some(def.file_field.clone()),
+            options: options.clone(), endpoint: Some(def.endpoint.clone()), file_field: Some(def.file_field.clone()),
             accepts: def.accepts.clone(), output: Some(def.output.clone()), name: Some(def.name.clone()),
         });
+        // first card save: widgets of this tool created with empty options follow it
+        let mut changed = Vec::new();
+        for w in config.widgets.iter_mut().filter(|w| w.tool_id == tool_id) {
+            if w.options.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                w.options = options.clone();
+                changed.push(w.id.clone());
+            }
+        }
+        for id in changed {
+            let _ = app.emit_to(widgets::label(&id), "widget-changed", ());
+        }
     }
     config::save_config(&config).map_err(|e| e.to_string())?;
     Ok(())
@@ -557,7 +594,7 @@ pub(crate) async fn run_files(app: &AppHandle, state: &AppState, tc: ToolConfig,
     let multi_tool = tc.file_field.as_deref().map(|f| f.ends_with("[]")).unwrap_or(false);
     if combine && multi_tool && paths.len() > 1 {
         let inputs: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-        let job_id = job_add(processor::Job::new(&tc.id, &label, &paths[0]));
+        let job_id = job_add(processor::Job::new(&tc.id, &label, &paths[0]).with_key(&tc.key));
         job_update(&job_id, |j| j.set_processing());
         let parent = inputs[0].parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
         return match watcher::run_tool_multi(&inputs, &tc, token.clone(), Some(&parent)).await {
@@ -579,7 +616,7 @@ pub(crate) async fn run_files(app: &AppHandle, state: &AppState, tc: ToolConfig,
         if let Some(label) = progress_to {
             let _ = app.emit_to(label, "widget-progress", RunProgress { done: results.len(), total, file: file_name.clone(), ok: true });
         }
-        let job_id = job_add(processor::Job::new(&tc.id, &label, &p));
+        let job_id = job_add(processor::Job::new(&tc.id, &label, &p).with_key(&tc.key));
         job_update(&job_id, |j| j.set_processing());
         let parent = path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
         let ok = match watcher::run_tool(&path, &tc, token.clone(), Some(&parent)).await {

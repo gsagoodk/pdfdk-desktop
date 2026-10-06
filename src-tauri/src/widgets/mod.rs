@@ -16,7 +16,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuild
 pub const WIDTH: f64 = 196.0;
 pub const HEIGHT: f64 = 196.0;
 
-fn label(id: &str) -> String {
+pub(crate) fn label(id: &str) -> String {
     format!("widget-{}", id)
 }
 
@@ -227,6 +227,13 @@ pub fn start_test_hook(app: &AppHandle) {
             Err(e) => println!("WIDGET_TEST failed: {}", e),
         }
     });
+}
+
+/// The ToolConfig a widget would run with right now (its own options over the catalogue defaults).
+pub(crate) async fn widget_tool_config(state: &AppState, id: &str) -> Option<ToolConfig> {
+    let widget = state.config.read().await.widgets.iter().find(|w| w.id == id).cloned()?;
+    let def = find_tool(state, &widget.tool_id).await?;
+    Some(tool_config(&def, &widget))
 }
 
 async fn create(app: &AppHandle, state: &AppState, tool_id: &str) -> Result<WidgetConfig, String> {
