@@ -21,32 +21,52 @@ jobs:
             args: ''
 
     runs-on: ${{ matrix.platform }}
+    env:
+      # Mac signing and notarisation run once the Apple secrets are set on this repository.
+      HAS_APPLE: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: lts/*
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install frontend dependencies
         run: npm install
 
+      # Signed for real on the Mac (Developer ID + notarisation) instead of the ad-hoc "-" of local
+      # builds – once the Apple secrets are set on this repository.
+      - name: Developer ID signing
+        if: matrix.platform == 'macos-latest' && env.HAS_APPLE == 'true'
+        shell: bash
+        run: |
+          node -e '
+            const fs = require("fs"), f = "src-tauri/tauri.conf.json";
+            const c = JSON.parse(fs.readFileSync(f, "utf8"));
+            delete c.bundle.macOS.signingIdentity;
+            fs.writeFileSync(f, JSON.stringify(c, null, 2) + "\n");
+          '
+
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Code signing + notarisation (add the secrets when the developer accounts exist):
-          # APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
-          # APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID — and remove "signingIdentity": "-" from tauri.conf.json.
-          # Windows: WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD.
+          # Mac code signing + notarisation (same Developer ID as PDF.dk Client).
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows (SSL.com eSigner) is wired in once the certificate exists.
         with:
           tagName: v__VERSION__
           releaseName: 'PDF.dk Desktop v__VERSION__'
@@ -55,3 +75,23 @@ jobs:
           includeUpdaterJson: true   # latest.json for the in-app updater (endpoint in tauri.conf.json)
           prerelease: false
           args: ${{ matrix.args }}
+
+      # The app inside is notarised by the build; the .dmg around it is notarised and stapled here
+      # too, so a downloaded .dmg opens without Gatekeeper's warning (then replaces the release's copy).
+      - name: Notarise the .dmg
+        if: matrix.platform == 'macos-latest' && env.HAS_APPLE == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$dmg"
+          spctl -a -vvv -t install "$dmg"
+          name=$(basename "$dmg" | tr ' ' '.')
+          cp "$dmg" "$RUNNER_TEMP/$name"
+          version=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+          gh release upload "v$version" "$RUNNER_TEMP/$name" --clobber
