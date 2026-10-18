@@ -216,6 +216,7 @@ impl FolderWatcher {
 /// then park the original in Originals/.
 pub async fn process_file_event(event: FileEvent, auth_token: Option<String>) -> Result<PathBuf, crate::api::ApiError> {
     let output = run_tool(&event.path, &event.tool_config, auth_token, None).await?;
+    clear_failed(&event.path).await;
     if let Err(e) = move_to_originals(&event.path).await {
         info!("Could not move original file to Originals folder: {}", e);
     }
@@ -301,8 +302,69 @@ pub async fn run_tool_multi(
     Ok(output_path)
 }
 
-async fn move_to_originals(file_path: &Path) -> Result<(), std::io::Error> {
+/// Where a file that failed waits, inside its hot folder (beside Processed/ and Originals/).
+pub const FAILED_DIR: &str = "Failed";
+
+/// The hot folder a file belongs to: its own folder – or, for a file waiting in Failed/, the
+/// folder above (so a retry writes to the hot folder's Processed/ and Originals/ as usual).
+pub fn hot_folder_of(file_path: &Path) -> PathBuf {
     let parent = file_path.parent().unwrap_or(Path::new("."));
+    if parent.file_name().and_then(|n| n.to_str()) == Some(FAILED_DIR) {
+        if let Some(up) = parent.parent() {
+            return up.to_path_buf();
+        }
+    }
+    parent.to_path_buf()
+}
+
+/// The job file that goes with a file in Failed/: `<name>.pdfdk-job.json` beside it. PDF.dk
+/// Client reads it when the file is opened there (shows why it failed) – only that exact name,
+/// next to the file the user opened.
+pub fn job_sidecar(file_path: &Path) -> PathBuf {
+    let name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    file_path.with_file_name(format!("{name}.pdfdk-job.json"))
+}
+
+/// A file a hot folder couldn't process: moved to Failed/ (out of the folder, so it isn't picked
+/// up again) with a job file saying what was tried and why it failed. Returns the new path.
+pub async fn park_failed(file_path: &Path, tool: &ToolConfig, tool_name: &str, error: &str) -> Option<PathBuf> {
+    let folder = hot_folder_of(file_path);
+    let failed = folder.join(FAILED_DIR);
+    tokio::fs::create_dir_all(&failed).await.ok()?;
+    let name = file_path.file_name()?.to_string_lossy().into_owned();
+    let mut dest = failed.join(&name);
+    if dest != file_path && dest.exists() {
+        let stem = file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+        let ext = file_path.extension().and_then(|s| s.to_str()).unwrap_or("pdf");
+        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        dest = failed.join(format!("{}_{}.{}", stem, ts, ext));
+    }
+    if dest != file_path {
+        tokio::fs::rename(file_path, &dest).await.ok()?;
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let job = serde_json::json!({
+        "schema": "https://pdf.dk/schema/desktop-job/1",
+        "app": format!("PDF.dk Desktop {}", env!("CARGO_PKG_VERSION")),
+        "tool": tool.id,
+        "toolName": tool_name,
+        "options": tool.options,
+        "hotFolder": folder.file_name().and_then(|n| n.to_str()).unwrap_or(""),
+        "error": error,
+        "failedAt": now,
+    });
+    let _ = tokio::fs::write(job_sidecar(&dest), serde_json::to_vec_pretty(&job).unwrap_or_default()).await;
+    Some(dest)
+}
+
+/// A retried file from Failed/ that worked: its job file goes (the file itself moved on).
+pub async fn clear_failed(file_path: &Path) {
+    let _ = tokio::fs::remove_file(job_sidecar(file_path)).await;
+}
+
+async fn move_to_originals(file_path: &Path) -> Result<(), std::io::Error> {
+    let folder = hot_folder_of(file_path);
+    let parent = folder.as_path();
     let originals_folder = parent.join("Originals");
     tokio::fs::create_dir_all(&originals_folder).await?;
     let filename = file_path.file_name().unwrap_or_default();
@@ -321,7 +383,8 @@ async fn move_to_originals(file_path: &Path) -> Result<(), std::io::Error> {
 
 fn get_output_path(input_path: &Path, config: &ToolConfig, suffix: &str, ext: &str, output_dir: Option<&Path>) -> PathBuf {
     let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
-    let parent = input_path.parent().unwrap_or(Path::new("."));
+    let folder = hot_folder_of(input_path);
+    let parent = folder.as_path();
     let dir: PathBuf = match output_dir {
         Some(d) => d.to_path_buf(),
         None => match &config.output_mode {
@@ -347,4 +410,33 @@ fn unique_path(dir: &Path, base: &str, ext: &str) -> PathBuf {
         }
     }
     first
+}
+
+#[cfg(test)]
+mod failed_tests {
+    use super::*;
+    #[tokio::test]
+    async fn a_failed_file_waits_in_failed_with_its_job_file() {
+        let hot = std::env::temp_dir().join(format!("pdfdk-hot-{}", std::process::id()));
+        std::fs::create_dir_all(&hot).unwrap();
+        let file = hot.join("Katalog.pdf");
+        std::fs::write(&file, b"%PDF-1.7").unwrap();
+        let tool: ToolConfig = serde_json::from_value(serde_json::json!({
+            "id": "pdfx-convert", "key": "folder:test", "enabled": true, "folderPath": hot.to_string_lossy(),
+            "outputMode": "subfolder", "options": { "standard": "x-4" }
+        })).unwrap();
+        let parked = park_failed(&file, &tool, "Til PDF/X", "Fonts not embedded").await.expect("parked");
+        assert_eq!(parked, hot.join("Failed").join("Katalog.pdf"));
+        assert!(!file.exists() && parked.exists());
+        let job: serde_json::Value = serde_json::from_slice(&std::fs::read(job_sidecar(&parked)).unwrap()).unwrap();
+        assert_eq!(job["schema"], "https://pdf.dk/schema/desktop-job/1");
+        assert_eq!(job["error"], "Fonts not embedded");
+        assert_eq!(job["toolName"], "Til PDF/X");
+        // A retry belongs to the hot folder, not to Failed/.
+        assert_eq!(hot_folder_of(&parked), hot);
+        assert_eq!(get_output_path(&parked, &tool, "x4", "pdf", None).parent().unwrap(), hot.join("Processed"));
+        clear_failed(&parked).await;
+        assert!(!job_sidecar(&parked).exists());
+        let _ = std::fs::remove_dir_all(&hot);
+    }
 }

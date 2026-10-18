@@ -113,7 +113,14 @@ fn spawn_event_loop(app: AppHandle, state_auth: Arc<RwLock<auth::AuthState>>, st
                 Err(e) => {
                     let msg = e.to_string();
                     add_log(&format!("FAILED: {} — {}", file_name, msg));
-                    job_update(&job_id, |j| j.set_failed(&msg));
+                    // Out of the hot folder into Failed/, with a job file PDF.dk Client can show.
+                    let parked = watcher::park_failed(&event.path, &event.tool_config, &label, &msg).await;
+                    job_update(&job_id, |j| {
+                        j.set_failed(&msg);
+                        if let Some(p) = &parked {
+                            j.input_file = p.to_string_lossy().into_owned();
+                        }
+                    });
                     notify(&app, &state_cfg, &format!("{} · PDF.dk", label), &format!("{}: {}", file_name, msg));
                 }
             }
@@ -303,7 +310,8 @@ async fn retry_job(app: AppHandle, state: tauri::State<'_, AppState>, job_id: St
     if !input.is_file() {
         return Err(if state.config.read().await.general.language == "en" { "The original file is no longer there".into() } else { "Originalfilen findes ikke længere".into() });
     }
-    let parent = input.parent().map(|p| p.to_path_buf());
+    // The hot folder it came from (also for a file waiting in Failed/).
+    let parent = Some(watcher::hot_folder_of(&input));
     // 0.4.6: rerun with the CURRENT options of whatever ran the job — its widget, its folder
     // entry — not a stale copy. Falls back to the folder-by-path lookup and the tool card.
     let widget_tc = match job.key.as_deref().and_then(|k| k.strip_prefix("widget:")) {
@@ -674,6 +682,38 @@ fn get_jobs() -> Vec<processor::Job> {
     JOBS.lock().map(|j| j.clone()).unwrap_or_default()
 }
 
+/// Opens a job's file in PDF.dk Client (the separate viewer/editor) – to see why a hot folder
+/// failed on it, or to check a result. Only a file one of this app's jobs read or wrote: the
+/// window can't use it to open anything else. Err("not_installed") when Client isn't there.
+#[tauri::command]
+fn open_in_client(path: String) -> Result<(), String> {
+    let known = JOBS.lock().map(|jobs| jobs.iter().any(|j| j.input_file == path || j.output_file.as_deref() == Some(path.as_str()))).unwrap_or(false);
+    if !known || !Path::new(&path).is_file() {
+        return Err("unknown".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // By bundle id: the installed Client, wherever it is; the path as a document to open.
+        let ok = std::process::Command::new("/usr/bin/open").args(["-b", "dk.pdf.client", "--", &path]).status().map(|s| s.success()).unwrap_or(false);
+        return if ok { Ok(()) } else { Err("not_installed".into()) };
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Where the installers put it: per user (NSIS default), or for all users.
+        let mut candidates = Vec::new();
+        for var in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(base) = std::env::var(var) {
+                candidates.push(PathBuf::from(&base).join("PDF.dk Client").join("pdfdk-client.exe"));
+                candidates.push(PathBuf::from(&base).join("Programs").join("PDF.dk Client").join("pdfdk-client.exe"));
+            }
+        }
+        let Some(exe) = candidates.into_iter().find(|p| p.is_file()) else { return Err("not_installed".into()) };
+        return std::process::Command::new(exe).arg(&path).spawn().map(|_| ()).map_err(|e| e.to_string());
+    }
+    #[allow(unreachable_code)]
+    Err("not_installed".into())
+}
+
 #[tauri::command]
 fn get_site_base() -> String {
     api::site_base()
@@ -852,6 +892,7 @@ pub fn run() {
             login_with_token,
             update_tool_output,
             retry_job,
+            open_in_client,
             get_logs,
             clear_logs,
             widgets::widget_list,

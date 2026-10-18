@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../i18n";
 import { baseName, type Job } from "../types";
 
@@ -21,6 +21,20 @@ async function retry(j: Job) {
   try { await invoke("retry_job", { jobId: j.id }); } catch { /* the job row shows the error */ }
   finally { retrying.value[j.id] = false; await refresh(); }
 }
+// PDF.dk Client: a failed file opens there with why it failed (Client reads the job file next to
+// it); a finished PDF can be checked there before it goes on.
+const clientMissing = ref(false);
+async function openInClient(path: string) {
+  try {
+    await invoke("open_in_client", { path });
+  } catch (e) {
+    if (String(e).includes("not_installed")) clientMissing.value = true;
+  }
+}
+async function getClient() {
+  openUrl(`${await invoke<string>("get_site_base")}/client`);
+}
+const isPdf = (p?: string | null) => !!p && /\.pdf$/i.test(p);
 async function clearLogs() {
   await invoke("clear_logs");
   logs.value = [];
@@ -47,6 +61,7 @@ watch(showLogs, (v) => { if (v) refresh(); });
       <button class="btn btn-sm btn-ghost" @click="showLogs = !showLogs">{{ t("logs") }}</button>
     </div>
 
+    <div v-if="clientMissing" class="av-empty card">{{ t("clientMissing") }} <a href="#" @click.prevent="getClient">{{ t("getClient") }}</a></div>
     <div v-if="!jobs.length" class="av-empty card">{{ t("noJobs") }}</div>
 
     <div v-else class="av-list card">
@@ -57,6 +72,8 @@ watch(showLogs, (v) => { if (v) refresh(); });
           <div class="av-sub">{{ j.toolName }} · {{ when(j.createdAt) }}<span v-if="j.error"> · <span class="av-err">{{ j.error }}</span></span></div>
         </div>
         <span v-if="j.status === 'processing'" class="spin" style="width:14px;height:14px"></span>
+        <button v-if="j.status === 'failed' && isPdf(j.inputFile)" class="btn btn-sm btn-ghost" :title="t('openInClientTip')" @click="openInClient(j.inputFile)">{{ t("openInClient") }}</button>
+        <button v-else-if="j.status === 'completed' && isPdf(j.outputFile)" class="btn btn-sm btn-ghost" :title="t('checkInClientTip')" @click="openInClient(j.outputFile!)">{{ t("checkInClient") }}</button>
         <button v-if="j.status === 'failed'" class="btn btn-sm" :disabled="retrying[j.id]" @click="retry(j)">{{ t("retry") }}</button>
         <button v-if="j.outputFile" class="btn btn-sm btn-ghost" @click="revealItemInDir(j.outputFile!)">{{ t("showInFolder") }}</button>
       </div>

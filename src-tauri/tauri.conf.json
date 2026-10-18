@@ -48,7 +48,8 @@
         ],
         "mimeType": "application/pdf",
         "description": "PDF document",
-        "role": "Viewer"
+        "role": "Viewer",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -62,7 +63,8 @@
           "tiff"
         ],
         "description": "Image",
-        "role": "Viewer"
+        "role": "Viewer",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -70,7 +72,8 @@
           "heif"
         ],
         "description": "HEIC image",
-        "role": "Viewer"
+        "role": "Viewer",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -79,7 +82,8 @@
           "ai"
         ],
         "description": "Vector artwork",
-        "role": "Viewer"
+        "role": "Viewer",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -88,7 +92,8 @@
           "stp"
         ],
         "description": "3D model",
-        "role": "Viewer"
+        "role": "Viewer",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -96,7 +101,8 @@
           "msg"
         ],
         "description": "Email",
-        "role": "Viewer"
+        "role": "Viewer",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -104,7 +110,8 @@
           "pptx"
         ],
         "description": "Presentation",
-        "role": "Viewer"
+        "role": "Viewer",
+        "rank": "Alternate"
       }
     ],
     "macOS": {

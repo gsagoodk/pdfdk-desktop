@@ -430,6 +430,7 @@ pub fn os_language() -> String {
 pub fn load_config() -> Result<AppConfig, ConfigError> {
     let path = get_config_path()?;
     if path.exists() {
+        make_private(&path);
         let content = fs::read_to_string(&path)?;
         let mut config: AppConfig = serde_json::from_str(&content)?;
         config.migrate_keys();
@@ -444,8 +445,42 @@ pub fn load_config() -> Result<AppConfig, ConfigError> {
 pub fn save_config(config: &AppConfig) -> Result<(), ConfigError> {
     let path = get_config_path()?;
     let content = serde_json::to_string_pretty(config)?;
-    fs::write(&path, content)?;
+    write_private(&path, content.as_bytes())?;
     Ok(())
+}
+
+/// The config holds the login token: written readable by this user only, from the first byte (a
+/// temp file created 0600, then moved into place – also never a half-written config).
+fn write_private(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("json.tmp");
+    let _ = fs::remove_file(&tmp);
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(&tmp)?;
+    f.write_all(data)?;
+    f.sync_all()?;
+    drop(f);
+    fs::rename(&tmp, path)
+}
+
+/// A config written by 0.4.6 or older is readable by other users: made private once.
+fn make_private(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(m) = fs::metadata(path) {
+            if m.permissions().mode() & 0o077 != 0 {
+                let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
+    let _ = path;
 }
 
 pub fn load_cached_catalog() -> Option<CatalogCache> {

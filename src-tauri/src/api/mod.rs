@@ -17,12 +17,15 @@ const MAX_POLL_ATTEMPTS: u32 = 300; // 10 minutes max
 /// Base URL of the API. `PDFDK_API_BASE=https://dev.pdf.dk/api` at launch
 /// points a build at the dev server; production is the default.
 pub fn api_base() -> String {
-    std::env::var("PDFDK_API_BASE")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "https://pdf.dk/api".to_string())
-        .trim_end_matches('/')
-        .to_string()
+    // Another server (a test server) only in development builds, and only over https: in the app
+    // people install, nothing in the environment can send the login and token elsewhere.
+    #[cfg(debug_assertions)]
+    if let Ok(b) = std::env::var("PDFDK_API_BASE") {
+        if b.trim().starts_with("https://") {
+            return b.trim().trim_end_matches('/').to_string();
+        }
+    }
+    "https://pdf.dk/api".to_string()
 }
 
 /// Origin of the website, derived from the API base (for links).
