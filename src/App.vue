@@ -30,6 +30,28 @@ const updating = ref(false);
 const updateError = ref("");
 const updateReady = ref(false);   // installed in the background, waiting for a restart
 const droppedFiles = ref<string[]>([]);
+// One Pro account, one computer (shared with PDF.dk Client on this machine)
+interface Seat { state: "here" | "elsewhere" | "unknown"; name?: string | null; lastSeen?: string | null; nextAllowed?: string | null; message?: string | null }
+const seat = ref<Seat>({ state: "unknown" });
+const moving = ref(false);
+async function checkSeat() {
+  if (!signedIn.value) return;
+  seat.value = await invoke<Seat>("seat_status").catch(() => ({ state: "unknown" }) as Seat);
+}
+async function moveHere() {
+  moving.value = true;
+  try {
+    seat.value = await invoke<Seat>("seat_activate");
+    if (seat.value.state === "here") await invoke("start_watchers").catch((e) => console.error(e));
+  } finally {
+    moving.value = false;
+  }
+}
+const seatWhen = (s?: string | null) => {
+  if (!s) return "";
+  const d = new Date(s);
+  return isNaN(+d) ? s : d.toLocaleString(lang.value === "en" ? "en-GB" : "da-DK", { dateStyle: "medium", timeStyle: "short" });
+};
 const dragOver = ref(false);
 
 const signedIn = computed(() => auth.value.isAuthenticated);
@@ -73,7 +95,9 @@ async function afterSignIn() {
   // always refetch the catalogue on start; the Rust side falls back to the cached copy when offline
   await loadTools(true);
   if (!hasPro.value) return;   // nothing runs for a free account
-  await invoke("start_watchers").catch((e) => console.error(e));
+  await checkSeat();
+  // Pro is on another computer: the folders wait here until it is moved (pdf.dk would refuse the jobs)
+  if (seat.value.state !== "elsewhere") await invoke("start_watchers").catch((e) => console.error(e));
   const pending = await invoke<string[]>("take_pending_files");
   if (pending.length) droppedFiles.value = pending;
 }
@@ -178,6 +202,8 @@ onMounted(async () => {
   // the app runs for weeks in the background: look again every 6 hours, and when the
   // window is brought back (the moment someone would notice an "Opdatér" button)
   setInterval(() => { if (!update.value) checkForUpdates(); }, 6 * 60 * 60 * 1000);
+  // Pro moved to or from another computer while this one runs
+  setInterval(checkSeat, 15 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !update.value) checkForUpdates(); });
 
   unlistenOpened = await listen<string[]>("files-opened", (e) => {
@@ -247,6 +273,13 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
+      <div v-if="seat.state === 'elsewhere'" class="seat-bar">
+        <span>{{ t("seatElsewhere", { name: seat.name || t("seatOtherComputer") }) }}<template v-if="seat.lastSeen"> · {{ t("seatLastSeen", { when: seatWhen(seat.lastSeen) }) }}</template></span>
+        <span v-if="seat.message === 'move_limit'" class="seat-err">{{ seat.nextAllowed ? t("seatMoveLimitDate", { when: seatWhen(seat.nextAllowed) }) : t("seatMoveLimit") }}</span>
+        <span v-else-if="seat.message" class="seat-err">{{ seat.message }}</span>
+        <button class="btn btn-sm btn-primary" :disabled="moving || !!seat.nextAllowed" @click="moveHere">{{ moving ? t("seatMoving") : t("seatMoveHere") }}</button>
+      </div>
+
       <main class="main">
         <ToolsView
           v-if="view === 'tools'"
@@ -314,4 +347,7 @@ onBeforeUnmount(() => {
 
 .drop-veil { position: absolute; inset: 0; background: var(--brandSoft); border: 3px dashed var(--brand); display: grid; place-items: center; z-index: 40; pointer-events: none; }
 .drop-msg { background: var(--card); border: 1px solid var(--brandLine); border-radius: 14px; padding: 14px 20px; font-weight: 800; box-shadow: var(--shadow); }
+.seat-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 24px; background: color-mix(in srgb, var(--brand, #3b4bdb) 10%, transparent); border-bottom: 1px solid var(--line, #e5e7eb); font-size: 13px; }
+.seat-bar .btn { margin-left: auto; }
+.seat-err { color: var(--danger, #d92d20); }
 </style>

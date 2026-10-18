@@ -53,6 +53,9 @@ pub enum ApiError {
     RateLimited(u64),
     #[error("File too large for your plan (max {0} MB)")]
     FileTooLarge(i32),
+    /// One Pro account, one computer: pdf.dk says this account's Pro is on another computer.
+    #[error("PDF.dk Pro bruges på en anden computer ({0}). Vælg »Brug Pro her i stedet« i PDF.dk Desktop.")]
+    DeviceElsewhere(String),
 }
 
 impl ApiError {
@@ -240,7 +243,54 @@ pub fn default_headers() -> reqwest::header::HeaderMap {
     if let Ok(v) = reqwest::header::HeaderValue::from_str(&client_id()) {
         h.insert(CLIENT_HEADER, v);
     }
+    // Which computer asks (one Pro account, one computer – shared with PDF.dk Client on the same
+    // machine), and its name for the account page.
+    if let Ok(v) = reqwest::header::HeaderValue::from_str(&device_id()) {
+        h.insert("X-PDFDK-Device", v);
+    }
+    if let Ok(v) = reqwest::header::HeaderValue::from_bytes(device_name().as_bytes()) {
+        h.insert("X-PDFDK-Device-Name", v);
+    }
     h
+}
+
+/// This computer, as pdf.dk sees it: a hash of the system's machine id (never the id itself). The
+/// same recipe as PDF.dk Client, so both apps on one computer count as one.
+pub fn device_id() -> String {
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| match machine_uid::get() {
+        Ok(uid) if !uid.trim().is_empty() => {
+            use sha2::Digest;
+            let d = sha2::Sha256::digest(format!("pdfdk-device:{}", uid.trim()).as_bytes());
+            d.iter().take(16).map(|b| format!("{b:02x}")).collect()
+        }
+        _ => String::new(),
+    })
+    .clone()
+}
+
+/// The computer's name as its owner knows it ("Gurmukhs MacBook Pro").
+pub fn device_name() -> String {
+    static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        if let Ok(o) = std::process::Command::new("/usr/sbin/scutil").args(["--get", "ComputerName"]).output() {
+            let n = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !n.is_empty() {
+                return n;
+            }
+        }
+        std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "Computer".into())
+    })
+    .chars()
+    .filter(|c| !c.is_control())
+    .take(80)
+    .collect()
+}
+
+/// A field of pdf.dk's answer, at the top or under "data" / "error".
+pub fn field<'a>(v: &'a serde_json::Value, key: &str) -> &'a serde_json::Value {
+    [&v[key], &v["data"][key], &v["error"][key]].into_iter().find(|x| !x.is_null()).unwrap_or(&serde_json::Value::Null)
 }
 /// A plain client with the identity header (auth calls use this).
 pub fn http_client() -> Client {
@@ -365,6 +415,14 @@ impl PdfDkClient {
         }
 
         let body = response.text().await.unwrap_or_default();
+        if status == reqwest::StatusCode::CONFLICT {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                if field(&v, "code").as_str() == Some("device_limit") {
+                    let name = field(&v, "active")["name"].as_str().unwrap_or("ukendt").to_string();
+                    return Err(ApiError::DeviceElsewhere(name));
+                }
+            }
+        }
         info!("Upload response {}: {}", status, body.chars().take(300).collect::<String>());
 
         if !status.is_success() {

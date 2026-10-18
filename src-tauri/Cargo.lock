@@ -2249,6 +2249,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "machine-uid"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d7217d573cdb141d6da43113b098172e057d39915d79c4bdedbc3aacd46bd96"
+dependencies = [
+ "libc",
+ "windows-registry 0.6.1",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2954,6 +2965,7 @@ version = "0.4.8"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
+ "machine-uid",
  "notify 8.2.0",
  "notify-debouncer-full",
  "objc2",
@@ -2961,6 +2973,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "sys-locale",
  "tauri",
  "tauri-build",

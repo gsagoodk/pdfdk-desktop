@@ -128,6 +128,15 @@ const strings: Record<string, { da: string; en: string }> = {
   checkUpdates: { da: "Søg efter opdatering", en: "Check for updates" },
   upToDate: { da: "Du har den nyeste version", en: "You have the latest version" },
   updateFailed: { da: "Opdatering fejlede", en: "Update failed" },
+
+  // one Pro account, one computer
+  seatElsewhere: { da: "Din Pro-licens bruges på »{name}« – mapperne kører ikke på denne computer", en: "Your Pro licence is in use on “{name}” – folders don't run on this computer" },
+  seatOtherComputer: { da: "en anden computer", en: "another computer" },
+  seatLastSeen: { da: "sidst set {when}", en: "last seen {when}" },
+  seatMoveHere: { da: "Brug Pro her i stedet", en: "Use Pro here instead" },
+  seatMoving: { da: "Flytter …", en: "Moving …" },
+  seatMoveLimit: { da: "Pro er flyttet for mange gange på kort tid. Prøv igen senere.", en: "Pro has been moved too often recently. Try again later." },
+  seatMoveLimitDate: { da: "Pro er flyttet for mange gange. Du kan flytte den igen fra {when}.", en: "Pro has been moved too often. You can move it again from {when}." },
   downloadManually: { da: "hent manuelt", en: "download manually" },
 
   // desktop widgets (0.4.0)

@@ -395,6 +395,70 @@ async fn logout(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(),
     Ok(())
 }
 
+/// One Pro account, one computer (shared with PDF.dk Client on the same machine): where this
+/// account's Pro is. pdf.dk answers the licence call with 409 `device_limit` when it's on another
+/// computer; then hot folders and widgets don't run here until the user moves it.
+#[derive(serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct Seat {
+    /// "here", "elsewhere" or "unknown" (offline, not signed in).
+    state: String,
+    name: Option<String>,
+    last_seen: Option<String>,
+    next_allowed: Option<String>,
+    message: Option<String>,
+}
+
+fn seat_from(status: reqwest::StatusCode, v: &serde_json::Value) -> Seat {
+    let s = |x: &serde_json::Value| x.as_str().map(|s| s.chars().take(80).collect::<String>());
+    let active = api::field(v, "active");
+    let code = api::field(v, "code").as_str();
+    let state = if status == reqwest::StatusCode::CONFLICT && code == Some("device_limit") {
+        "elsewhere"
+    } else if status.is_success() {
+        "here"
+    } else {
+        "unknown"
+    };
+    Seat { state: state.into(), name: s(&active["name"]), last_seen: s(&active["last_seen"]), next_allowed: s(api::field(v, "next_allowed")), message: None }
+}
+
+#[tauri::command]
+async fn seat_status() -> Seat {
+    let Ok(token) = auth::load_token() else { return Seat { state: "unknown".into(), ..Default::default() } };
+    match api::http_client().get(format!("{}/licence/client", api::api_base())).bearer_auth(token).header("Accept", "application/json").send().await {
+        Ok(r) => {
+            let st = r.status();
+            seat_from(st, &r.json().await.unwrap_or_default())
+        }
+        Err(_) => Seat { state: "unknown".into(), ..Default::default() },
+    }
+}
+
+/// "Brug Pro her i stedet": this computer takes the account's Pro (a few moves a month).
+#[tauri::command]
+async fn seat_activate() -> Seat {
+    let Ok(token) = auth::load_token() else { return Seat { state: "unknown".into(), ..Default::default() } };
+    let r = match api::http_client().post(format!("{}/licence/client/activate", api::api_base())).bearer_auth(token).header("Accept", "application/json").send().await {
+        Ok(r) => r,
+        Err(e) => return Seat { state: "unknown".into(), message: Some(e.to_string()), ..Default::default() },
+    };
+    let st = r.status();
+    let v: serde_json::Value = r.json().await.unwrap_or_default();
+    if st == reqwest::StatusCode::TOO_MANY_REQUESTS || api::field(&v, "code").as_str() == Some("move_limit") {
+        let mut s = seat_status().await;
+        s.next_allowed = api::field(&v, "next_allowed").as_str().map(String::from);
+        s.message = Some("move_limit".into());
+        return s;
+    }
+    if st.is_success() {
+        return Seat { state: "here".into(), ..Default::default() };
+    }
+    let mut s = seat_status().await;
+    s.message = api::field(&v, "message").as_str().map(String::from).or(Some(format!("pdf.dk {st}")));
+    s
+}
+
 #[tauri::command]
 async fn check_auth(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<auth::AuthState, String> {
     if let Ok(token) = auth::load_token() {
@@ -893,6 +957,8 @@ pub fn run() {
             update_tool_output,
             retry_job,
             open_in_client,
+            seat_status,
+            seat_activate,
             get_logs,
             clear_logs,
             widgets::widget_list,
