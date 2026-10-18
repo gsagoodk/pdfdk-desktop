@@ -29,3 +29,9 @@ src-tauri/target/
 # Environment
 .env
 .env.local
+
+# Certificates and keys never go in the repository
+*.p12
+*.pfx
+*.key
+*.pem
