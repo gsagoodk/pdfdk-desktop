@@ -90,12 +90,15 @@ async function loadTools(refresh = false) {
     toolsLoading.value = false;
   }
 }
-async function afterSignIn() {
+/** `justSignedIn`: the user signed in now (not the app starting) – then this computer takes the
+ *  account's Pro if another computer has it (one Pro, one computer). */
+async function afterSignIn(justSignedIn = false) {
   await loadConfig();
   // always refetch the catalogue on start; the Rust side falls back to the cached copy when offline
   await loadTools(true);
   if (!hasPro.value) return;   // nothing runs for a free account
   await checkSeat();
+  if (justSignedIn && seat.value.state === "elsewhere") seat.value = await invoke<Seat>("seat_activate");
   // Pro is on another computer: the folders wait here until it is moved (pdf.dk would refuse the jobs)
   if (seat.value.state !== "elsewhere") await invoke("start_watchers").catch((e) => console.error(e));
   const pending = await invoke<string[]>("take_pending_files");
@@ -107,7 +110,7 @@ async function refreshAuth() {
 /** "Check again" on the Pro gate: the user just started a trial on the website */
 async function recheckPlan() {
   await refreshAuth();
-  if (hasPro.value) await afterSignIn();
+  if (hasPro.value) await afterSignIn(true);
 }
 async function signOut() {
   await invoke("logout");
@@ -234,7 +237,7 @@ onBeforeUnmount(() => {
     <LoginView
       v-else-if="!signedIn"
       :site-base="siteBase"
-      @signed-in="(a) => { auth = a; afterSignIn(); }"
+      @signed-in="(a) => { auth = a; afterSignIn(true); }"
     />
 
     <div v-else-if="!hasPro" class="gate">
