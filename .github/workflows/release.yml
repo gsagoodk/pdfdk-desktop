@@ -22,8 +22,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version=$(node -p 'require("./src-tauri/tauri.conf.json").version')
-          gh release view "v$version" >/dev/null 2>&1 || gh release create "v$version" --draft --title "PDF.dk Flow v$version" --notes "See the assets below to download and install this version." --verify-tag
-          echo "id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq "[.[] | select(.tag_name == \"v$version\")][0].id")" >> "$GITHUB_OUTPUT"
+          # The id from the create call itself (a just-made draft isn't in the release list at once).
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq "[.[] | select(.tag_name == \"v$version\")][0].id // empty")
+          [ -n "$id" ] || id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" -f tag_name="v$version" -f name="PDF.dk Flow v$version" -f body="See the assets below to download and install this version." -F draft=true --jq .id)
+          [ -n "$id" ] || { echo "::error::No draft release"; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
 
   release:
     needs: draft
@@ -108,9 +111,15 @@ jobs:
           @"
           param([string]`$file)
           Set-Location "$dir"
+          # NSIS hands its uninstaller over as a .tmp file, which CodeSignTool refuses: signed as .exe.
+          `$target = `$file
+          if (`$file -notmatch '\.(exe|dll|msi|sys|cab)`$') { `$target = "`$file.exe"; Copy-Item `$file `$target -Force }
           for (`$try = 1; `$try -le 3; `$try++) {
-            & "$java" -jar "$jar" sign "-username=`$env:ES_USERNAME" "-password=`$env:ES_PASSWORD" "-credential_id=`$env:ES_CREDENTIAL_ID" "-totp_secret=`$env:ES_TOTP_SECRET" "-input_file_path=`$file" -override=true
-            if ((Get-AuthenticodeSignature `$file).Status -eq 'Valid') { exit 0 }
+            & "$java" -jar "$jar" sign "-username=`$env:ES_USERNAME" "-password=`$env:ES_PASSWORD" "-credential_id=`$env:ES_CREDENTIAL_ID" "-totp_secret=`$env:ES_TOTP_SECRET" "-input_file_path=`$target" -override=true
+            if ((Get-AuthenticodeSignature `$target).Status -eq 'Valid') {
+              if (`$target -ne `$file) { Copy-Item `$target `$file -Force; Remove-Item `$target }
+              exit 0
+            }
             Start-Sleep -Seconds 31
           }
           throw "Not signed: `$file"
