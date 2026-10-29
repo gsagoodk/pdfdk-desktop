@@ -7,7 +7,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The draft release is made once, before the builds: when both builds made it themselves, they
+  # could do so at the same moment and leave two drafts (one per platform), as with v0.5.0.
+  draft:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      id: ${{ steps.make.outputs.id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: make
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+          gh release view "v$version" >/dev/null 2>&1 || gh release create "v$version" --draft --title "PDF.dk Flow v$version" --notes "See the assets below to download and install this version." --verify-tag
+          echo "id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq "[.[] | select(.tag_name == \"v$version\")][0].id")" >> "$GITHUB_OUTPUT"
+
   release:
+    needs: draft
     permissions:
       contents: write
     strategy:
@@ -123,10 +142,7 @@ jobs:
           ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
           ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'PDF.dk Flow v__VERSION__'
-          releaseBody: 'See the assets below to download and install this version.'
-          releaseDraft: true
+          releaseId: ${{ needs.draft.outputs.id }}
           includeUpdaterJson: true   # latest.json for the in-app updater (endpoint in tauri.conf.json)
           prerelease: false
           args: ${{ matrix.args }}
