@@ -30,7 +30,7 @@ const updating = ref(false);
 const updateError = ref("");
 const updateReady = ref(false);   // installed in the background, waiting for a restart
 const droppedFiles = ref<string[]>([]);
-// One Pro account, one computer (shared with PDF.dk Client on this machine)
+// One Pro account, one computer (shared with PDF.dk Desktop on this machine)
 interface Seat { state: "here" | "elsewhere" | "unknown"; name?: string | null; lastSeen?: string | null; nextAllowed?: string | null; message?: string | null }
 const seat = ref<Seat>({ state: "unknown" });
 const moving = ref(false);

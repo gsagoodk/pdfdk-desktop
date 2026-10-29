@@ -757,18 +757,21 @@ fn open_in_client(path: String) -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     {
-        // By bundle id: the installed Client, wherever it is; the path as a document to open.
+        // By bundle id: the installed PDF.dk Desktop (once PDF.dk Client), wherever it is; the path as a document to open.
         let ok = std::process::Command::new("/usr/bin/open").args(["-b", "dk.pdf.client", "--", &path]).status().map(|s| s.success()).unwrap_or(false);
         return if ok { Ok(()) } else { Err("not_installed".into()) };
     }
     #[cfg(target_os = "windows")]
     {
-        // Where the installers put it: per user (NSIS default), or for all users.
+        // Where the installers put it: per user (NSIS default), or for all users – as PDF.dk Desktop
+        // (from 1.2, in Programs) or under its old name PDF.dk Client.
         let mut candidates = Vec::new();
         for var in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
             if let Ok(base) = std::env::var(var) {
-                candidates.push(PathBuf::from(&base).join("PDF.dk Client").join("pdfdk-client.exe"));
-                candidates.push(PathBuf::from(&base).join("Programs").join("PDF.dk Client").join("pdfdk-client.exe"));
+                for name in ["PDF.dk Desktop", "PDF.dk Client"] {
+                    candidates.push(PathBuf::from(&base).join("Programs").join(name).join("pdfdk-client.exe"));
+                    candidates.push(PathBuf::from(&base).join(name).join("pdfdk-client.exe"));
+                }
             }
         }
         let Some(exe) = candidates.into_iter().find(|p| p.is_file()) else { return Err("not_installed".into()) };

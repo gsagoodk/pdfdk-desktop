@@ -21,7 +21,7 @@ async function retry(j: Job) {
   try { await invoke("retry_job", { jobId: j.id }); } catch { /* the job row shows the error */ }
   finally { retrying.value[j.id] = false; await refresh(); }
 }
-// PDF.dk Client: a failed file opens there with why it failed (Client reads the job file next to
+// PDF.dk Desktop (the PDF app, once PDF.dk Client): a failed file opens there with why it failed (it reads the job file next to
 // it); a finished PDF can be checked there before it goes on.
 const clientMissing = ref(false);
 async function openInClient(path: string) {
@@ -32,7 +32,7 @@ async function openInClient(path: string) {
   }
 }
 async function getClient() {
-  openUrl(`${await invoke<string>("get_site_base")}/client`);
+  openUrl(`${await invoke<string>("get_site_base")}/desktop`);
 }
 const isPdf = (p?: string | null) => !!p && /\.pdf$/i.test(p);
 async function clearLogs() {

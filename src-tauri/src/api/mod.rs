@@ -243,7 +243,7 @@ pub fn default_headers() -> reqwest::header::HeaderMap {
     if let Ok(v) = reqwest::header::HeaderValue::from_str(&client_id()) {
         h.insert(CLIENT_HEADER, v);
     }
-    // Which computer asks (one Pro account, one computer – shared with PDF.dk Client on the same
+    // Which computer asks (one Pro account, one computer – shared with PDF.dk Desktop on the same
     // machine), and its name for the account page.
     if let Ok(v) = reqwest::header::HeaderValue::from_str(&device_id()) {
         h.insert("X-PDFDK-Device", v);
@@ -255,7 +255,7 @@ pub fn default_headers() -> reqwest::header::HeaderMap {
 }
 
 /// This computer, as pdf.dk sees it: a hash of the system's machine id (never the id itself). The
-/// same recipe as PDF.dk Client, so both apps on one computer count as one.
+/// same recipe as PDF.dk Desktop, so both apps on one computer count as one.
 pub fn device_id() -> String {
     static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     ID.get_or_init(|| match machine_uid::get() {
