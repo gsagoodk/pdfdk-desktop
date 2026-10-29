@@ -1,6 +1,6 @@
 [package]
 name = "pdfdk-desktop"
-version = "0.5.1"
+version = "0.6.0"
 description = "PDF.dk Flow - watched folders, open-with and drag-and-drop for every pdf.dk tool"
 authors = ["PDF.dk"]
 edition = "2021"

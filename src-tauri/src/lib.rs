@@ -849,8 +849,49 @@ fn deliver_files<R: Runtime>(app: &AppHandle<R>, paths: Vec<String>) {
     let _ = app.emit("files-opened", paths);
 }
 
+/// The app was renamed (until 0.6 it was "PDF.dk Desktop", the name the PDF reader has now). An
+/// update keeps the old file name, so a copy started as "PDF.dk Desktop.app" moves itself to
+/// "PDF.dk Flow.app" and starts again from there – before anything else runs, so nothing holds
+/// the old path (nor the single-instance lock). Left as it is when the new name is taken or the
+/// folder can't be written.
+#[cfg(target_os = "macos")]
+fn move_to_new_name() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    // …/PDF.dk Desktop.app/Contents/MacOS/pdfdk-desktop
+    let Some(bundle) = exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) else { return };
+    if bundle.file_name().map_or(true, |n| n != "PDF.dk Desktop.app") {
+        return;
+    }
+    let Some(target) = bundle.parent().map(|d| d.join("PDF.dk Flow.app")) else { return };
+    if target.exists() || std::fs::rename(bundle, &target).is_err() {
+        return;
+    }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let _ = std::process::Command::new("/usr/bin/open").arg("-n").arg(&target).arg("--args").args(&args).spawn();
+    std::process::exit(0);
+}
+
+/// Start at login follows the setting at every start: after the rename the login item has to
+/// name the new app (and, on a Mac, its new path). The old Mac login item, made under the old name,
+/// is taken away when it is this app's.
+fn refresh_login_item(app: &tauri::App, on: bool) {
+    #[cfg(target_os = "macos")]
+    if let Some(home) = dirs::home_dir() {
+        let old = home.join("Library/LaunchAgents/PDF.dk Desktop.plist");
+        if std::fs::read_to_string(&old).map_or(false, |t| t.contains("/Contents/MacOS/pdfdk-desktop")) {
+            let _ = std::fs::remove_file(&old);
+        }
+    }
+    let al = app.autolaunch();
+    if let Err(e) = if on { al.enable() } else { al.disable() } {
+        add_log(&format!("autostart: {}", e));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    move_to_new_name();
     tracing_subscriber::fmt::init();
 
     let cli_files: Vec<String> = std::env::args().skip(1).filter(|a| !a.starts_with('-') && Path::new(a).is_file()).collect();
@@ -877,6 +918,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .setup(move |app| {
             let config = config::load_config().unwrap_or_default();
+            refresh_login_item(app, config.general.start_on_login);
             let start_minimized = config.general.start_minimized && std::env::args().any(|a| a == "--minimized");
             let cached = config::load_cached_catalog().map(|c| c.tools).unwrap_or_default();
 
