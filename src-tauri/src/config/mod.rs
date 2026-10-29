@@ -1,4 +1,4 @@
-// Configuration management for PDF.dk Desktop
+// Configuration management for PDF.dk Flow
 //
 // Two things live here: the app's own settings (config.json in the OS config
 // dir) and the tools catalogue, which the app fetches from GET /api/tools and

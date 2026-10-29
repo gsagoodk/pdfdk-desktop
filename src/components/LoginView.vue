@@ -75,7 +75,7 @@ async function submit() {
     <div class="login-card card">
       <div class="login-brand">
         <span class="pdk-brand" style="font-size:34px">pdf<i class="pdk-dot"></i>dk</span>
-        <span class="login-sub">Desktop</span>
+        <span class="login-sub">Flow</span>
       </div>
       <h1 class="login-h">{{ t("signInTitle") }}</h1>
       <p class="login-p">{{ t("signInSub") }}</p>

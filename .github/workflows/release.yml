@@ -53,6 +53,58 @@ jobs:
             fs.writeFileSync(f, JSON.stringify(c, null, 2) + "\n");
           '
 
+      # Windows code signing (SSL.com eSigner, a cloud certificate): CodeSignTool, pinned by SHA-256,
+      # signs every .exe/.msi the build makes (Tauri calls it through bundle.windows.signCommand,
+      # before the updater signatures are made). The credential is looked up from the login unless
+      # ES_CREDENTIAL_ID is set. Without the secrets, Windows is built unsigned (as before).
+      - name: Windows code signing
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          ES_CREDENTIAL_ID: ${{ secrets.ES_CREDENTIAL_ID }}
+        run: |
+          if (-not $env:ES_USERNAME) { Write-Host "::warning::No eSigner secrets – Windows is built unsigned"; exit 0 }
+          $dir = "$env:RUNNER_TEMP\codesigntool"
+          $zip = "$env:RUNNER_TEMP\codesigntool.zip"
+          Invoke-WebRequest "https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.2/CodeSignTool-v1.3.2.zip" -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne "F14B1E1EF14BFA1FD00279C363AAB0DEBBF5DCFBA0E4BCDCE5D22BB771DE0E3A") { throw "CodeSignTool: wrong checksum" }
+          Expand-Archive $zip $dir
+          $java = "$env:JAVA_HOME_17_X64\bin\java.exe"
+          $jar = "$dir\jar\code_sign_tool-1.3.2.jar"
+          $cred = $env:ES_CREDENTIAL_ID
+          if (-not $cred) {
+            Push-Location $dir
+            $out = & $java -jar $jar get_credential_ids "-username=$env:ES_USERNAME" "-password=$env:ES_PASSWORD" | Out-String
+            Pop-Location
+            $cred = ([regex]"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}").Match($out).Value
+            if (-not $cred) { throw "No eSigner credential found for the login: $out" }
+          }
+          Write-Host "::add-mask::$cred"
+          "ES_CREDENTIAL_ID=$cred" >> $env:GITHUB_ENV
+          # The command Tauri runs for each file. CodeSignTool can print an error and still exit 0,
+          # so the file's signature is checked; a refused one-time code is tried again after 31 s.
+          $sign = "$env:RUNNER_TEMP\sign.ps1"
+          @"
+          param([string]`$file)
+          Set-Location "$dir"
+          for (`$try = 1; `$try -le 3; `$try++) {
+            & "$java" -jar "$jar" sign "-username=`$env:ES_USERNAME" "-password=`$env:ES_PASSWORD" "-credential_id=`$env:ES_CREDENTIAL_ID" "-totp_secret=`$env:ES_TOTP_SECRET" "-input_file_path=`$file" -override=true
+            if ((Get-AuthenticodeSignature `$file).Status -eq 'Valid') { exit 0 }
+            Start-Sleep -Seconds 31
+          }
+          throw "Not signed: `$file"
+          "@ | Set-Content $sign
+          # (From a file: quotes in a command-line script don't survive PowerShell → node.)
+          @'
+          const fs = require("fs"), f = "src-tauri/tauri.conf.json";
+          const c = JSON.parse(fs.readFileSync(f, "utf8"));
+          c.bundle.windows = { ...c.bundle.windows, signCommand: { cmd: "powershell", args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", process.argv[2], "%1"] } };
+          fs.writeFileSync(f, JSON.stringify(c, null, 2) + "\n");
+          '@ | Set-Content "$env:RUNNER_TEMP\signconf.js"
+          node "$env:RUNNER_TEMP\signconf.js" $sign
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
@@ -66,10 +118,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Windows (SSL.com eSigner) is wired in once the certificate exists.
+          # Windows (SSL.com eSigner) – used by the sign command set up above.
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
         with:
           tagName: v__VERSION__
-          releaseName: 'PDF.dk Desktop v__VERSION__'
+          releaseName: 'PDF.dk Flow v__VERSION__'
           releaseBody: 'See the assets below to download and install this version.'
           releaseDraft: true
           includeUpdaterJson: true   # latest.json for the in-app updater (endpoint in tauri.conf.json)

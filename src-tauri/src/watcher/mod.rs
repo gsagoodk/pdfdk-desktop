@@ -1,4 +1,4 @@
-// File watcher module for PDF.dk Desktop
+// File watcher module for PDF.dk Flow
 // Watches folders for new files and hands them to the tool of that folder.
 
 use crate::api::PdfDkClient;
@@ -345,7 +345,7 @@ pub async fn park_failed(file_path: &Path, tool: &ToolConfig, tool_name: &str, e
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let job = serde_json::json!({
         "schema": "https://pdf.dk/schema/desktop-job/1",
-        "app": format!("PDF.dk Desktop {}", env!("CARGO_PKG_VERSION")),
+        "app": format!("PDF.dk Flow {}", env!("CARGO_PKG_VERSION")),
         "tool": tool.id,
         "toolName": tool_name,
         "options": tool.options,

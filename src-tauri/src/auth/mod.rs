@@ -1,4 +1,4 @@
-// Authentication module for PDF.dk Desktop
+// Authentication module for PDF.dk Flow
 // Login against the website's API, token storage, session validation.
 
 use crate::api::api_base;

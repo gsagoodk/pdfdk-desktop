@@ -1,4 +1,4 @@
-// PDF.dk Desktop - Main library
+// PDF.dk Flow - Main library
 // Watched folders, "open with", drag-and-drop: every file goes through the
 // website's API with the tool the user chose.
 
@@ -798,7 +798,7 @@ fn clear_logs() {
 // ------------------------------------------------------------------ tray
 
 fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
-    let show = tauri::menu::MenuItem::with_id(app, "show", "Vis PDF.dk Desktop", true, None::<&str>)?;
+    let show = tauri::menu::MenuItem::with_id(app, "show", "Vis PDF.dk Flow", true, None::<&str>)?;
     let site = tauri::menu::MenuItem::with_id(app, "site", "Åbn pdf.dk", true, None::<&str>)?;
     let quit = tauri::menu::MenuItem::with_id(app, "quit", "Afslut", true, None::<&str>)?;
     let menu = tauri::menu::Menu::with_items(app, &[&show, &site, &quit])?;
@@ -930,7 +930,7 @@ pub fn run() {
                 widgets::start_test_hook(app.handle());
             }
 
-            info!("PDF.dk Desktop started");
+            info!("PDF.dk Flow started");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

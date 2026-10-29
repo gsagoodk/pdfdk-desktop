@@ -54,7 +54,7 @@ pub enum ApiError {
     #[error("File too large for your plan (max {0} MB)")]
     FileTooLarge(i32),
     /// One Pro account, one computer: pdf.dk says this account's Pro is on another computer.
-    #[error("PDF.dk Pro bruges på en anden computer ({0}). Vælg »Brug Pro her i stedet« i PDF.dk Desktop.")]
+    #[error("PDF.dk Pro bruges på en anden computer ({0}). Vælg »Brug Pro her i stedet« i PDF.dk Flow.")]
     DeviceElsewhere(String),
 }
 

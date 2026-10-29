@@ -6,7 +6,7 @@ export type Lang = "da" | "en";
 export const lang = ref<Lang>("da");
 
 const strings: Record<string, { da: string; en: string }> = {
-  appName: { da: "PDF.dk Desktop", en: "PDF.dk Desktop" },
+  appName: { da: "PDF.dk Flow", en: "PDF.dk Flow" },
   loading: { da: "Indlæser…", en: "Loading…" },
 
   // login
@@ -22,7 +22,7 @@ const strings: Record<string, { da: string; en: string }> = {
   pasteCode: { da: "Kom du ikke tilbage? Indsæt koden fra siden:", en: "Not sent back? Paste the code from the page:" },
   useCode: { da: "Brug kode", en: "Use code" },
   orWithPassword: { da: "eller med adgangskode", en: "or with a password" },
-  proRequiredTitle: { da: "PDF.dk Desktop kræver Pro", en: "PDF.dk Desktop needs Pro" },
+  proRequiredTitle: { da: "PDF.dk Flow kræver Pro", en: "PDF.dk Flow needs Pro" },
   proRequiredBody: { da: "Overvågede mapper og træk-og-slip kører gennem din konto. Start en gratis prøveperiode på pdf.dk — appen låses op med det samme.", en: "Watched folders and drag-and-drop run through your account. Start a free trial on pdf.dk and the app unlocks right away." },
   seePrices: { da: "Se priser på pdf.dk", en: "See prices on pdf.dk" },
   checkAgain: { da: "Tjek igen", en: "Check again" },
@@ -159,7 +159,7 @@ const strings: Record<string, { da: string; en: string }> = {
   widgetOnly: { da: "Kun {ext}", en: "Only {ext}" },
   widgetSkipped: { da: "{n} fil(er) sprunget over", en: "{n} file(s) skipped" },
   widgetDragFailed: { da: "Kunne ikke starte træk – filen ligger ved originalen", en: "Could not start the drag – the file is next to the original" },
-  widgetSignIn: { da: "Log ind i PDF.dk Desktop for at bruge widgetten", en: "Sign in to PDF.dk Desktop to use the widget" },
+  widgetSignIn: { da: "Log ind i PDF.dk Flow for at bruge widgetten", en: "Sign in to PDF.dk Flow to use the widget" },
   widgetNeedsPro: { da: "Widgets kræver PDF.dk Pro", en: "Widgets need PDF.dk Pro" },
   widgetOpenApp: { da: "Åbn appen", en: "Open the app" },
 };

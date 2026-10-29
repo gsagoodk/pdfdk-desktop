@@ -258,7 +258,7 @@ onBeforeUnmount(() => {
       <header class="hdr">
         <div class="hdr-l">
           <span class="pdk-brand hdr-brand">pdf<i class="pdk-dot"></i>dk</span>
-          <span class="hdr-sub">Desktop</span>
+          <span class="hdr-sub">Flow</span>
         </div>
         <nav class="hdr-nav">
           <button class="nav-btn" :class="{ on: view === 'tools' }" @click="view = 'tools'">{{ t("tools") }}</button>

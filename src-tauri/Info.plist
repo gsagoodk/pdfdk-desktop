@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the app's Info.plist by Tauri: the name macOS shows (menu bar, Dock, About) is
+     PDF.dk Flow, while productName stays "PDF.dk Desktop" so installed copies, their folders and the
+     Windows installer's registry keys (which go by productName) keep working. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>PDF.dk Flow</string>
+  <key>CFBundleDisplayName</key>
+  <string>PDF.dk Flow</string>
+</dict>
+</plist>

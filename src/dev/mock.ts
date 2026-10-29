@@ -101,4 +101,4 @@ const handlers: Record<string, Handler> = {
   metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main", windowLabel: "main" } },
   plugins: { path: { sep: "/", delimiter: ":" } },
 };
-console.info("PDF.dk Desktop: browser preview mode (Tauri mocked)");
+console.info("PDF.dk Flow: browser preview mode (Tauri mocked)");
