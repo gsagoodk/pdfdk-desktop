@@ -344,7 +344,7 @@ pub async fn park_failed(file_path: &Path, tool: &ToolConfig, tool_name: &str, e
     }
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let job = serde_json::json!({
-        "schema": "https://pdf.dk/schema/desktop-job/1",
+        "schema": "https://pdf.dk/schema/flow-job/1",
         "app": format!("PDF.dk Flow {}", env!("CARGO_PKG_VERSION")),
         "tool": tool.id,
         "toolName": tool_name,
@@ -429,7 +429,7 @@ mod failed_tests {
         assert_eq!(parked, hot.join("Failed").join("Katalog.pdf"));
         assert!(!file.exists() && parked.exists());
         let job: serde_json::Value = serde_json::from_slice(&std::fs::read(job_sidecar(&parked)).unwrap()).unwrap();
-        assert_eq!(job["schema"], "https://pdf.dk/schema/desktop-job/1");
+        assert_eq!(job["schema"], "https://pdf.dk/schema/flow-job/1");
         assert_eq!(job["error"], "Fonts not embedded");
         assert_eq!(job["toolName"], "Til PDF/X");
         // A retry belongs to the hot folder, not to Failed/.

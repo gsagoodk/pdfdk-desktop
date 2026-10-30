@@ -80,7 +80,7 @@ const handlers: Record<string, Handler> = {
   update_tool_options: ({ toolId, options, key }) => { const t = key ? config.tools.find((x) => x.key === key) : config.tools.find((x) => x.id === toolId); if (t) t.options = options; return null; },
   process_files: async ({ paths, combine }) => { await new Promise((r) => setTimeout(r, 1200)); if (combine && paths.length > 1) return [{ input: paths.join(", "), output: paths[0].replace(/(\.[^.]+)$/, "_samlet.pdf"), error: null }]; return paths.map((p: string) => ({ input: p, output: p.replace(/(\.[^.]+)$/, "_tool$1"), error: null })); },
   get_jobs: () => jobs,
-  start_browser_login: () => "https://dev.pdf.dk/desktop-login?state=mock",
+  start_browser_login: () => "https://dev.pdf.dk/flow-login?state=mock",
   login_with_token: ({ token }) => { if (token !== "mock") throw "Unauthorized - please login again"; return { ...auth(), isAuthenticated: true }; },
   update_tool_output: ({ key, mode, path }) => { const t = config.tools.find((x) => x.key === key); if (t) t.outputMode = mode === "custom" ? { custom: path } : mode === "same" ? "same-folder" : "subfolder"; return null; },
   retry_job: async ({ jobId }) => { const j = jobs.find((x) => x.id === jobId); await new Promise((r) => setTimeout(r, 800)); if (j) { j.status = "completed"; j.error = null; j.outputFile = j.inputFile.replace(/(\.[^.]+)$/, "_retry$1"); } return null; },

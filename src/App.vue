@@ -269,7 +269,7 @@ onBeforeUnmount(() => {
           <button v-if="update" class="btn btn-sm btn-primary" :disabled="updating" @click="installUpdate" :title="updateError">
             {{ updating ? t("updating") : updateReady ? t("restartFor", { v: update.version }) : t("updateTo", { v: update.version }) }}
           </button>
-          <span v-if="updateError" class="hdr-uperr" :title="updateError">{{ t("updateFailed") }} · <a href="#" @click.prevent="openUrl(`${siteBase}/desktop`)">{{ t("downloadManually") }}</a></span>
+          <span v-if="updateError" class="hdr-uperr" :title="updateError">{{ t("updateFailed") }} · <a href="#" @click.prevent="openUrl(`${siteBase}/flow`)">{{ t("downloadManually") }}</a></span>
           <span v-if="usageText" class="hdr-usage mono">{{ usageText }}</span>
           <span class="pill" :class="auth.isPro ? 'pill-brand' : 'pill-muted'">{{ planLabel }}</span>
           <button class="btn btn-ghost btn-sm" :title="auth.user?.email" @click="openUrl(siteBase)">{{ t("openWebsite") }}</button>

@@ -1,12 +1,12 @@
 [package]
-name = "pdfdk-desktop"
+name = "pdfdk-flow"
 version = "0.6.0"
 description = "PDF.dk Flow - watched folders, open-with and drag-and-drop for every pdf.dk tool"
 authors = ["PDF.dk"]
 edition = "2021"
 
 [lib]
-name = "pdfdk_desktop_lib"
+name = "pdfdk_flow_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

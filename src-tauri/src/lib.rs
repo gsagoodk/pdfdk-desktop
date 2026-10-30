@@ -200,7 +200,7 @@ async fn login(app: AppHandle, state: tauri::State<'_, AppState>, email: String,
     Ok(result)
 }
 
-/// Browser sign-in, step 1: open pdf.dk/desktop-login with a one-time state. The page
+/// Browser sign-in, step 1: open pdf.dk/flow-login with a one-time state. The page
 /// signs the user in (e-mail, Google, Microsoft — whatever they use) and sends the
 /// token back through pdfdk://auth?token=…&state=… (handled in `handle_deep_link`).
 #[tauri::command]
@@ -211,7 +211,7 @@ async fn start_browser_login(state: tauri::State<'_, AppState>) -> Result<String
     }
     let lang = state.config.read().await.general.language.clone();
     let prefix = if lang == "en" { "/en" } else { "" };
-    let url = format!("{}{}/desktop-login?state={}", api::site_base(), prefix, nonce);
+    let url = format!("{}{}/flow-login?state={}", api::site_base(), prefix, nonce);
     tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|e| e.to_string())?;
     Ok(url)
 }
@@ -884,6 +884,15 @@ fn refresh_login_item(app: &tauri::App, on: bool) {
         if std::fs::read_to_string(&old).map_or(false, |t| t.contains("/Contents/MacOS/pdfdk-desktop")) {
             let _ = std::fs::remove_file(&old);
         }
+        // What the old id (dk.pdf.desktop, until 0.6) left behind besides the settings, which
+        // config moves over: web view data and caches. Nothing in it is used any more.
+        for d in ["Library/Caches/dk.pdf.desktop", "Library/WebKit/dk.pdf.desktop", "Library/Logs/dk.pdf.desktop"] {
+            let _ = std::fs::remove_dir_all(home.join(d));
+        }
+    }
+    #[cfg(windows)]
+    if let Some(local) = dirs::data_local_dir() {
+        let _ = std::fs::remove_dir_all(local.join("dk.pdf.desktop"));
     }
     let al = app.autolaunch();
     if let Err(e) = if on { al.enable() } else { al.disable() } {

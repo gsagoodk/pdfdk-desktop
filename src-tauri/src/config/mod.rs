@@ -404,7 +404,12 @@ impl AppConfig {
 
 fn app_config_dir() -> Result<PathBuf, ConfigError> {
     let config_dir = dirs::config_dir().ok_or(ConfigError::NoConfigDir)?;
-    let app_config_dir = config_dir.join("dk.pdf.desktop");
+    let app_config_dir = config_dir.join("dk.pdf.flow");
+    // Until 0.6 the app's id was dk.pdf.desktop: settings and sign-in move over once.
+    let old = config_dir.join("dk.pdf.desktop");
+    if !app_config_dir.exists() && old.join("config.json").exists() {
+        let _ = fs::rename(&old, &app_config_dir);
+    }
     if !app_config_dir.exists() {
         fs::create_dir_all(&app_config_dir)?;
     }
