@@ -56,7 +56,7 @@ const dragOver = ref(false);
 
 const signedIn = computed(() => auth.value.isAuthenticated);
 // the app is for Pro (incl. trial, team, admin-granted) — free accounts see the gate
-const hasPro = computed(() => auth.value.isPro || !!auth.value.isUnlimited || !!auth.value.user?.isSuperadmin);
+const hasPro = computed(() => auth.value.isPro);
 const planLabel = computed(() => {
   const p = (auth.value.plan || "free").toLowerCase();
   if (p === "team" || p === "superadmin" || p === "enterprise") return "PRO";
@@ -184,6 +184,7 @@ async function installUpdate() {
 let unlistenOpened: UnlistenFn | null = null;
 let unlistenDrag: UnlistenFn | null = null;
 
+let unlistenAuth: UnlistenFn | null = null;
 onMounted(async () => {
   document.documentElement.lang = "da";
   mq.addEventListener("change", onScheme);
@@ -196,6 +197,8 @@ onMounted(async () => {
   await refreshAuth();
   if (signedIn.value) await afterSignIn();
   loading.value = false;
+  // pdf.dk refused a job for the plan or the seat: the Rust side has read the licence again
+  unlistenAuth = await listen("auth-changed", async () => (auth.value = await invoke<AuthState>("get_auth_state")));
   checkForUpdates().then(async (found) => {
     if (found && (await invoke<boolean>("auto_update_test").catch(() => false))) {
       invoke("log_client", { message: `auto-update test: installing ${update.value?.version}` }).catch(() => {});
@@ -225,6 +228,7 @@ onBeforeUnmount(() => {
   mq.removeEventListener("change", onScheme);
   unlistenOpened?.();
   unlistenDrag?.();
+  unlistenAuth?.();
 });
 </script>
 

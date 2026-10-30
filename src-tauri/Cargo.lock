@@ -2963,6 +2963,7 @@ checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 name = "pdfdk-flow"
 version = "0.6.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
  "machine-uid",
@@ -2971,6 +2972,7 @@ dependencies = [
  "objc2",
  "once_cell",
  "reqwest 0.12.28",
+ "ring",
  "serde",
  "serde_json",
  "sha2",

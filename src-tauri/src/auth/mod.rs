@@ -39,10 +39,10 @@ pub struct AuthState {
 }
 
 impl AuthState {
-    /// Plan names that count as paid for the app's badge
+    /// The plan's name, for the badge only (pro, pro_apps, pro_apps_yearly, team …). Whether the
+    /// apps may run is the signed licence's `pro` (licence.rs), never the plan.
     pub fn apply_plan(&mut self, plan: &str) {
         self.plan = Some(plan.to_string());
-        self.is_pro = matches!(plan.to_lowercase().as_str(), "pro" | "team" | "enterprise" | "superadmin");
     }
 }
 
@@ -147,7 +147,7 @@ pub async fn login(email: &str, password: &str) -> Result<AuthState, AuthError> 
 
     let mut state = AuthState {
         is_authenticated: true,
-        is_pro: user.is_superadmin,
+        is_pro: false,
         user: Some(user),
         token: Some(data.token),
         ..Default::default()
@@ -188,7 +188,7 @@ pub async fn validate_token(token: &str) -> Result<AuthState, AuthError> {
 
     let mut state = AuthState {
         is_authenticated: true,
-        is_pro: user.is_superadmin,
+        is_pro: false,
         user: Some(user),
         token: Some(token.to_string()),
         ..Default::default()

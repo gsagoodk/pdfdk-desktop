@@ -5,6 +5,7 @@
 mod api;
 mod auth;
 mod config;
+mod licence;
 mod processor;
 mod watcher;
 mod widgets;
@@ -83,6 +84,15 @@ fn notify<R: Runtime>(app: &AppHandle<R>, cfg: &Arc<RwLock<AppConfig>>, title: &
     }
 }
 
+/// After pdf.dk refused a job for the plan (403 apps_required) or the seat (409): the licence
+/// again, so the window shows what holds now.
+async fn refresh_pro(app: &AppHandle, state_auth: &Arc<RwLock<auth::AuthState>>) {
+    let Some(token) = state_auth.read().await.token.clone() else { return };
+    let pro = licence::pro(&token).await;
+    state_auth.write().await.is_pro = pro;
+    let _ = app.emit("auth-changed", ());
+}
+
 fn tool_label(tc: &ToolConfig, lang: &str) -> String {
     match &tc.name {
         Some(b) if lang == "en" && !b.en.is_empty() => b.en.clone(),
@@ -113,6 +123,9 @@ fn spawn_event_loop(app: AppHandle, state_auth: Arc<RwLock<auth::AuthState>>, st
                 Err(e) => {
                     let msg = e.to_string();
                     add_log(&format!("FAILED: {} — {}", file_name, msg));
+                    if matches!(e, api::ApiError::AppsRequired(_) | api::ApiError::DeviceElsewhere(_)) {
+                        refresh_pro(&app, &state_auth).await;
+                    }
                     // Out of the hot folder into Failed/, with a job file PDF.dk Client can show.
                     let parked = watcher::park_failed(&event.path, &event.tool_config, &label, &msg).await;
                     job_update(&job_id, |j| {
@@ -167,7 +180,7 @@ async fn get_auth_state(state: tauri::State<'_, AppState>) -> Result<auth::AuthS
 }
 
 async fn fill_usage(result: &mut auth::AuthState) {
-    if let Some(ref token) = result.token {
+    if let Some(token) = result.token.clone() {
         let client = api::PdfDkClient::new(Some(token.clone()));
         if let Ok(usage) = client.get_usage_status().await {
             result.apply_plan(&usage.plan);
@@ -177,6 +190,7 @@ async fn fill_usage(result: &mut auth::AuthState) {
             result.max_file_size_mb = usage.max_file_size_mb.or(Some(100));
             result.is_unlimited = Some(usage.is_unlimited);
         }
+        result.is_pro = licence::pro(&token).await;
     }
 }
 
@@ -384,6 +398,7 @@ async fn logout(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(),
         t
     };
     auth::clear_token().map_err(|e| e.to_string())?;
+    licence::forget();
     let _ = app.emit("auth-changed", ());
     // revoke on the server too (0.3.4); failing that is logged, not fatal — the token is gone locally
     if let Some(t) = token {

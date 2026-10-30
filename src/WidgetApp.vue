@@ -26,7 +26,7 @@ const progress = ref<{ done: number; total: number; file: string } | null>(null)
 const results = ref<FileResult[] | null>(null);
 
 const signedIn = computed(() => !!auth.value?.isAuthenticated);
-const hasPro = computed(() => !!auth.value && (auth.value.isPro || !!auth.value.isUnlimited || !!auth.value.user?.isSuperadmin));
+const hasPro = computed(() => !!auth.value && auth.value.isPro);
 const ready = computed(() => signedIn.value && hasPro.value && !!tool.value);
 const accent = computed(() => `var(${CATEGORY_VAR[tool.value?.category || ""] || "--brand"})`);
 const outputs = computed(() => (results.value || []).filter((r) => r.output).map((r) => r.output as string));

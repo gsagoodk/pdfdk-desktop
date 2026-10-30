@@ -402,6 +402,11 @@ impl AppConfig {
 
 // ---------------------------------------------------------------- files
 
+/// The app's own folder (settings, the kept licence).
+pub fn app_dir() -> Result<PathBuf, ConfigError> {
+    app_config_dir()
+}
+
 fn app_config_dir() -> Result<PathBuf, ConfigError> {
     let config_dir = dirs::config_dir().ok_or(ConfigError::NoConfigDir)?;
     let app_config_dir = config_dir.join("dk.pdf.flow");

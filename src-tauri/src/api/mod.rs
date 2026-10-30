@@ -56,6 +56,10 @@ pub enum ApiError {
     /// One Pro account, one computer: pdf.dk says this account's Pro is on another computer.
     #[error("PDF.dk Pro bruges på en anden computer ({0}). Vælg »Brug Pro her i stedet« i PDF.dk Flow.")]
     DeviceElsewhere(String),
+    /// The account has no Pro for the apps (a plain Pro is website-only): pdf.dk's own words, and
+    /// where to upgrade.
+    #[error("{0}")]
+    AppsRequired(String),
 }
 
 impl ApiError {
@@ -289,6 +293,18 @@ pub fn device_name() -> String {
 }
 
 /// A field of pdf.dk's answer, at the top or under "data" / "error".
+/// pdf.dk's message for "no Pro for the apps", in the app's language, with where to upgrade.
+fn apps_required(v: &serde_json::Value) -> ApiError {
+    let en = crate::config::load_config().map(|c| c.general.language == "en").unwrap_or(false);
+    let (key, fallback, more) = if en {
+        ("message_en", "Your plan doesn't include the PDF.dk apps.", "Upgrade at pdf.dk/pricing")
+    } else {
+        ("message", "Dit abonnement giver ikke adgang til PDF.dk-appsene.", "Opgradér på pdf.dk/pricing")
+    };
+    let msg = field(v, key).as_str().or(field(v, "message").as_str()).unwrap_or(fallback).trim().to_string();
+    ApiError::AppsRequired(format!("{msg} {more}"))
+}
+
 pub fn field<'a>(v: &'a serde_json::Value, key: &str) -> &'a serde_json::Value {
     [&v[key], &v["data"][key], &v["error"][key]].into_iter().find(|x| !x.is_null()).unwrap_or(&serde_json::Value::Null)
 }
@@ -415,6 +431,14 @@ impl PdfDkClient {
         }
 
         let body = response.text().await.unwrap_or_default();
+        if status == reqwest::StatusCode::FORBIDDEN {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                // "apps_required" is under `error` (the seat codes are under `code`)
+                if v["error"].as_str() == Some("apps_required") || field(&v, "code").as_str() == Some("apps_required") {
+                    return Err(apps_required(&v));
+                }
+            }
+        }
         if status == reqwest::StatusCode::CONFLICT {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
                 if field(&v, "code").as_str() == Some("device_limit") {
